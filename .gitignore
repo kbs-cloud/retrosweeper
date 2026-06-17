@@ -1,0 +1,35 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+node_modules
+.vite
+walkthrough.md
+dist
+dist-ssr
+*.local
+.env
+.env.*
+*.db
+*.db-*
+
+# Testing Coverage and E2E results
+coverage/
+playwright-report/
+test-results/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Commit & Changelog drafts
+NEXT_COMMIT.txt
+NEXT_CHANGELOG.md

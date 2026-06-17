@@ -1,0 +1,43 @@
+{
+  "name": "retrosweeper",
+  "private": true,
+  "version": "0.1.0",
+  "main": "server.cjs",
+  "scripts": {
+    "dev": "npx tsc src/game/gameState.ts --outDir src/game/dist --module commonjs --target es2022 --moduleResolution node --noEmit false --esModuleInterop --ignoreConfig --ignoreDeprecations 6.0 && concurrently \"node server.cjs\" \"vite\"",
+    "build": "npx tsc src/game/gameState.ts --outDir src/game/dist --module commonjs --target es2022 --moduleResolution node --noEmit false --esModuleInterop --ignoreConfig --ignoreDeprecations 6.0 && vite build",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test": "npm run test:unit && npm run test:e2e"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "lucide-react": "^1.20.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "sqlite3": "^6.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.12.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^10.0.3",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "jsdom": "^29.1.1",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.59.2",
+    "vite": "^8.0.12",
+    "vitest": "^4.1.9"
+  }
+}
