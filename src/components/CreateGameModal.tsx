@@ -42,7 +42,6 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({
             <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>FIELD NAME</label>
             <input 
               type="text" 
-              required
               placeholder="e.g. Sector 9" 
               className="terminal-input"
               value={createGameName}

@@ -48,7 +48,7 @@ export function isPlayerVacant(player: Player, status?: string): boolean {
 }
 
 export function initializeGame(options: {
-  name: string;
+  name?: string;
   hostName: string;
   hostEmail: string;
   maxPlayers: number;
@@ -99,7 +99,7 @@ export function initializeGame(options: {
 
   return {
     gameId,
-    name: options.name,
+    name: options.name?.trim() || generateRandomGameName(),
     status: 'setup',
     players,
     width,
