@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { initializeGame, executeAction, getAiAction } from './gameState';
 
 describe('RetroSweeper Game State Machine', () => {
@@ -155,10 +155,15 @@ describe('RetroSweeper Game State Machine', () => {
     // The only unrevealed cell is (0, 0), so it must be a mine!
     grid[0][0].isMine = true;
 
+    // Mock Math.random to avoid the 5% random mistake chance
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
     const action = getAiAction(grid, 'hard');
     expect(action).not.toBeNull();
     expect(action!.type).toBe('flag');
     expect(action!.x).toBe(0);
     expect(action!.y).toBe(0);
+
+    spy.mockRestore();
   });
 });

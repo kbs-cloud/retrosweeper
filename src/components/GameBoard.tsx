@@ -37,6 +37,19 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const [hoveredX, setHoveredX] = useState<number | null>(null);
   const [hoveredY, setHoveredY] = useState<number | null>(null);
 
+  // Zoom & Pan states
+  const [zoom, setZoom] = useState(1.0);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [mobileActionMode, setMobileActionMode] = useState<'reveal' | 'flag'>('reveal');
+  const [showHelp, setShowHelp] = useState(false);
+
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const touchStartDistRef = useRef<number | null>(null);
+  const touchStartZoomRef = useRef<number>(1.0);
+
   // Animation particles
   const particlesRef = useRef<Particle[]>([]);
 
@@ -141,7 +154,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
       const dpr = window.devicePixelRatio || 1;
       const width = container.clientWidth;
-      const height = Math.max(400, container.clientHeight || 500);
+      const height = container.clientHeight || 400;
 
       canvas.width = width * dpr;
       canvas.height = height * dpr;
@@ -167,6 +180,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         offsetLeft: offsetL,
         offsetTop: offsetT
       });
+
+      // Reset zoom and panning when screen layout changes to keep centered
+      setZoom(1.0);
+      setPanX(0);
+      setPanY(0);
     };
 
     handleResize();
@@ -180,6 +198,247 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       clearTimeout(timer);
     };
   }, [gameState.width, gameState.height]);
+
+  // Helper to clamp pan offsets to keep board within viewport
+  const clampPan = (px: number, py: number, currentZoom: number) => {
+    const { cellWidth, offsetLeft, offsetTop } = dimensions;
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: px, y: py };
+
+    const width = canvas.width / (window.devicePixelRatio || 1);
+    const height = canvas.height / (window.devicePixelRatio || 1);
+
+    const boardWidth = cellWidth * currentZoom * gameState.width;
+    const boardHeight = cellWidth * currentZoom * gameState.height;
+
+    let clampedX = px;
+    let clampedY = py;
+
+    if (boardWidth > width) {
+      // Allow panning when zoomed, but don't let edges leave the screen
+      const minPanX = width - boardWidth - offsetLeft - 20; // 20px padding
+      const maxPanX = -offsetLeft + 20;
+      clampedX = Math.max(minPanX, Math.min(maxPanX, px));
+    } else {
+      // Lock centered if it fits within the viewport width
+      clampedX = 0;
+    }
+
+    if (boardHeight > height) {
+      // Allow panning vertically, but clamp to edges
+      const minPanY = height - boardHeight - offsetTop - 20; // 20px padding
+      const maxPanY = -offsetTop + 20;
+      clampedY = Math.max(minPanY, Math.min(maxPanY, py));
+    } else {
+      // Lock centered if it fits within the viewport height
+      clampedY = 0;
+    }
+
+    return { x: clampedX, y: clampedY };
+  };
+
+  const updatePan = (px: number, py: number, z: number) => {
+    const clamped = clampPan(px, py, z);
+    setPanX(clamped.x);
+    setPanY(clamped.y);
+  };
+
+  // Helper to adjust zoom centered on a specific point (mx, my)
+  const adjustZoom = (newZoom: number, mx: number, my: number) => {
+    const { cellWidth, offsetLeft, offsetTop } = dimensions;
+    const ratio = newZoom / zoom;
+    
+    const newPanX = panX * ratio + (mx - offsetLeft) * (1 - ratio);
+    const newPanY = panY * ratio + (my - offsetTop) * (1 - ratio);
+    
+    setZoom(newZoom);
+    updatePan(newPanX, newPanY, newZoom);
+  };
+
+  // Zoom button handler
+  const handleZoomBtn = (factor: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = rect.width / 2;
+    const my = rect.height / 2;
+    const newZoom = Math.max(0.5, Math.min(4.0, zoom * factor));
+    adjustZoom(newZoom, mx, my);
+  };
+
+  // Mouse wheel zoom
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    const zoomFactor = 1.1;
+    const newZoom = e.deltaY < 0 
+      ? Math.min(4.0, zoom * zoomFactor) 
+      : Math.max(0.5, zoom / zoomFactor);
+
+    adjustZoom(newZoom, mx, my);
+  };
+
+  // Mouse Drag / Panning
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (e.button !== 0) return; // Only drag with left click
+    isDraggingRef.current = false;
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
+    panStartRef.current = { x: panX, y: panY };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    const { cellWidth, offsetLeft, offsetTop } = dimensions;
+    const finalCellWidth = cellWidth * zoom;
+
+    if (e.buttons === 1) { // Left button is pressed
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      if (Math.hypot(dx, dy) > 5) {
+        isDraggingRef.current = true;
+        updatePan(panStartRef.current.x + dx, panStartRef.current.y + dy, zoom);
+        setHoveredX(null);
+        setHoveredY(null);
+      }
+    } else {
+      // Just hover
+      const cellX = Math.floor((mx - offsetLeft - panX) / finalCellWidth);
+      const cellY = Math.floor((my - offsetTop - panY) / finalCellWidth);
+
+      if (cellX >= 0 && cellX < gameState.width && cellY >= 0 && cellY < gameState.height) {
+        setHoveredX(cellX);
+        setHoveredY(cellY);
+      } else {
+        setHoveredX(null);
+        setHoveredY(null);
+      }
+    }
+  };
+
+  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (e.button !== 0) return;
+    if (!isDraggingRef.current) {
+      if (activeViewPlayerId !== myPlayerId) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+      const { cellWidth, offsetLeft, offsetTop } = dimensions;
+      const finalCellWidth = cellWidth * zoom;
+
+      const cellX = Math.floor((mx - offsetLeft - panX) / finalCellWidth);
+      const cellY = Math.floor((my - offsetTop - panY) / finalCellWidth);
+
+      if (cellX >= 0 && cellX < gameState.width && cellY >= 0 && cellY < gameState.height) {
+        onCellAction(mobileActionMode, cellX, cellY);
+        setCursorX(cellX);
+        setCursorY(cellY);
+      }
+    }
+    isDraggingRef.current = false;
+  };
+
+  const handleMouseLeave = () => {
+    setHoveredX(null);
+    setHoveredY(null);
+  };
+
+  // Touch handlers for mobile pan & zoom
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 1) {
+      isDraggingRef.current = false;
+      dragStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      panStartRef.current = { x: panX, y: panY };
+    } else if (e.touches.length === 2) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      touchStartDistRef.current = dist;
+      touchStartZoomRef.current = zoom;
+      
+      panStartRef.current = { x: panX, y: panY };
+      const canvas = canvasRef.current;
+      if (canvas) {
+        dragStartRef.current = {
+          x: (t1.clientX + t2.clientX) / 2,
+          y: (t1.clientY + t2.clientY) / 2
+        };
+      }
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 1) {
+      const dx = e.touches[0].clientX - dragStartRef.current.x;
+      const dy = e.touches[0].clientY - dragStartRef.current.y;
+      if (Math.hypot(dx, dy) > 5) {
+        isDraggingRef.current = true;
+        updatePan(panStartRef.current.x + dx, panStartRef.current.y + dy, zoom);
+      }
+    } else if (e.touches.length === 2 && touchStartDistRef.current !== null) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const mx = (t1.clientX + t2.clientX) / 2 - rect.left;
+        const my = (t1.clientY + t2.clientY) / 2 - rect.top;
+        
+        const scale = dist / touchStartDistRef.current;
+        const newZoom = Math.max(0.5, Math.min(4.0, touchStartZoomRef.current * scale));
+        
+        const midX = (t1.clientX + t2.clientX) / 2;
+        const midY = (t1.clientY + t2.clientY) / 2;
+        const dx = midX - dragStartRef.current.x;
+        const dy = midY - dragStartRef.current.y;
+        
+        const ratio = newZoom / zoom;
+        const newPanX = (panStartRef.current.x + dx) * ratio + (mx - offsetLeft) * (1 - ratio);
+        const newPanY = (panStartRef.current.y + dy) * ratio + (my - offsetTop) * (1 - ratio);
+        
+        setZoom(newZoom);
+        updatePan(newPanX, newPanY, newZoom);
+      }
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 0) {
+      if (!isDraggingRef.current) {
+        if (activeViewPlayerId !== myPlayerId) return;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        const mx = dragStartRef.current.x - rect.left;
+        const my = dragStartRef.current.y - rect.top;
+
+        const { cellWidth, offsetLeft, offsetTop } = dimensions;
+        const finalCellWidth = cellWidth * zoom;
+
+        const cellX = Math.floor((mx - offsetLeft - panX) / finalCellWidth);
+        const cellY = Math.floor((my - offsetTop - panY) / finalCellWidth);
+
+        if (cellX >= 0 && cellX < gameState.width && cellY >= 0 && cellY < gameState.height) {
+          onCellAction(mobileActionMode, cellX, cellY);
+          setCursorX(cellX);
+          setCursorY(cellY);
+        }
+      }
+      isDraggingRef.current = false;
+      touchStartDistRef.current = null;
+    }
+  };
 
   // Render loop
   useEffect(() => {
@@ -227,6 +486,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       ctx.translate(shakeX, shakeY);
       
       const { cellWidth, offsetLeft, offsetTop } = dimensions;
+      const finalCellWidth = cellWidth * zoom;
 
       const targetGrid = gameState.grids[activeViewPlayerId] || [];
 
@@ -235,8 +495,15 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         for (let x = 0; x < gameState.width; x++) {
           const cell = targetGrid[y] ? targetGrid[y][x] : null;
           if (!cell) continue;
-          const cx = offsetLeft + x * cellWidth;
-          const cy = offsetTop + y * cellWidth;
+          
+          // Apply zoom and panning offsets
+          const cx = offsetLeft + panX + x * finalCellWidth;
+          const cy = offsetTop + panY + y * finalCellWidth;
+
+          // Clip rendering to canvas bounds to optimize
+          if (cx + finalCellWidth < 0 || cx > width || cy + finalCellWidth < 0 || cy > height) {
+            continue;
+          }
 
           const isHovered = hoveredX === x && hoveredY === y;
           const isCursor = cursorX === x && cursorY === y;
@@ -247,7 +514,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           if (!cell.isRevealed) {
             // Unrevealed Sector Style
             ctx.fillStyle = isHovered ? '#1c1736' : '#100c24';
-            ctx.fillRect(1, 1, cellWidth - 2, cellWidth - 2);
+            ctx.fillRect(1, 1, finalCellWidth - 2, finalCellWidth - 2);
 
             // Neon Borders
             ctx.strokeStyle = isCursor 
@@ -256,7 +523,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                 ? 'rgba(0, 255, 255, 0.7)' 
                 : 'rgba(0, 255, 255, 0.25)';
             ctx.lineWidth = isCursor || isHovered ? 2 : 1;
-            ctx.strokeRect(1, 1, cellWidth - 2, cellWidth - 2);
+            ctx.strokeRect(1, 1, finalCellWidth - 2, finalCellWidth - 2);
 
             // Draw holographic warning flag beacon
             if (cell.isFlagged) {
@@ -267,30 +534,30 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               
               // Flag shape
               ctx.beginPath();
-              ctx.moveTo(cellWidth * 0.35, cellWidth * 0.8);
-              ctx.lineTo(cellWidth * 0.65, cellWidth * 0.8);
-              ctx.moveTo(cellWidth * 0.5, cellWidth * 0.8);
-              ctx.lineTo(cellWidth * 0.5, cellWidth * 0.25);
-              ctx.lineTo(cellWidth * 0.25, cellWidth * 0.45);
-              ctx.lineTo(cellWidth * 0.5, cellWidth * 0.55);
-              ctx.lineWidth = 3;
+              ctx.moveTo(finalCellWidth * 0.35, finalCellWidth * 0.8);
+              ctx.lineTo(finalCellWidth * 0.65, finalCellWidth * 0.8);
+              ctx.moveTo(finalCellWidth * 0.5, finalCellWidth * 0.8);
+              ctx.lineTo(finalCellWidth * 0.5, finalCellWidth * 0.25);
+              ctx.lineTo(finalCellWidth * 0.25, finalCellWidth * 0.45);
+              ctx.lineTo(finalCellWidth * 0.5, finalCellWidth * 0.55);
+              ctx.lineWidth = Math.max(1.5, finalCellWidth * 0.08);
               ctx.strokeStyle = '#ff0055';
               ctx.stroke();
 
               // Beacon top dot
               ctx.fillStyle = '#ff0055';
               ctx.beginPath();
-              ctx.arc(cellWidth * 0.5, cellWidth * 0.25, 2, 0, Math.PI * 2);
+              ctx.arc(finalCellWidth * 0.5, finalCellWidth * 0.25, Math.max(1, finalCellWidth * 0.05), 0, Math.PI * 2);
               ctx.fill();
             }
           } else {
             // Revealed Sector Style
             ctx.fillStyle = '#0a0718';
-            ctx.fillRect(1, 1, cellWidth - 2, cellWidth - 2);
+            ctx.fillRect(1, 1, finalCellWidth - 2, finalCellWidth - 2);
 
             ctx.strokeStyle = 'rgba(0, 255, 255, 0.08)';
             ctx.lineWidth = 1;
-            ctx.strokeRect(1, 1, cellWidth - 2, cellWidth - 2);
+            ctx.strokeRect(1, 1, finalCellWidth - 2, finalCellWidth - 2);
 
             if (cell.isMine) {
               // Mine display (cyber-hazard)
@@ -299,23 +566,23 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               ctx.shadowBlur = 12;
 
               ctx.beginPath();
-              ctx.arc(cellWidth * 0.5, cellWidth * 0.5, Math.max(0, cellWidth * 0.25), 0, Math.PI * 2);
+              ctx.arc(finalCellWidth * 0.5, finalCellWidth * 0.5, Math.max(0, finalCellWidth * 0.25), 0, Math.PI * 2);
               ctx.fill();
 
               // Draw cross lines for spikes
               ctx.strokeStyle = '#ff0055';
               ctx.lineWidth = 2;
               ctx.beginPath();
-              ctx.moveTo(cellWidth * 0.15, cellWidth * 0.5);
-              ctx.lineTo(cellWidth * 0.85, cellWidth * 0.5);
-              ctx.moveTo(cellWidth * 0.5, cellWidth * 0.15);
-              ctx.lineTo(cellWidth * 0.5, cellWidth * 0.85);
+              ctx.moveTo(finalCellWidth * 0.15, finalCellWidth * 0.5);
+              ctx.lineTo(finalCellWidth * 0.85, finalCellWidth * 0.5);
+              ctx.moveTo(finalCellWidth * 0.5, finalCellWidth * 0.15);
+              ctx.lineTo(finalCellWidth * 0.5, finalCellWidth * 0.85);
               ctx.stroke();
             } else if (cell.neighborMines > 0) {
               // Draw text indicator
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
-              ctx.font = `bold ${Math.floor(cellWidth * 0.45)}px 'Share Tech Mono', monospace`;
+              ctx.font = `bold ${Math.floor(finalCellWidth * 0.45)}px 'Share Tech Mono', monospace`;
               
               // Colors matching retro styling
               let color = '#39ff14'; // 1 (Green)
@@ -328,7 +595,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               ctx.fillStyle = color;
               ctx.shadowColor = color;
               ctx.shadowBlur = 5;
-              ctx.fillText(cell.neighborMines.toString(), cellWidth / 2, cellWidth / 2);
+              ctx.fillText(cell.neighborMines.toString(), finalCellWidth / 2, finalCellWidth / 2);
             }
           }
           ctx.restore();
@@ -337,11 +604,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
       // Draw Cursor target highlight in setup / play modes
       if (gameState.status === 'playing') {
-        const curX = offsetLeft + cursorX * cellWidth;
-        const curY = offsetTop + cursorY * cellWidth;
+        const curX = offsetLeft + panX + cursorX * finalCellWidth;
+        const curY = offsetTop + panY + cursorY * finalCellWidth;
         ctx.strokeStyle = 'rgba(255, 255, 0, 0.45)';
         ctx.lineWidth = 2;
-        ctx.strokeRect(curX - 2, curY - 2, cellWidth + 4, cellWidth + 4);
+        ctx.strokeRect(curX - 2, curY - 2, finalCellWidth + 4, finalCellWidth + 4);
       }
 
       // Draw and update explosion sparks
@@ -463,88 +730,134 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
     render();
     return () => cancelAnimationFrame(animFrameId);
-  }, [gameState, cursorX, cursorY, hoveredX, hoveredY, dimensions, myPlayerId, activeViewPlayerId]);
-
-  // Click calculations
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>, action: 'reveal' | 'flag') => {
-    if (activeViewPlayerId !== myPlayerId) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const { cellWidth, offsetLeft, offsetTop } = dimensions;
-
-    const cellX = Math.floor((x - offsetLeft) / cellWidth);
-    const cellY = Math.floor((y - offsetTop) / cellWidth);
-
-    if (cellX >= 0 && cellX < gameState.width && cellY >= 0 && cellY < gameState.height) {
-      onCellAction(action, cellX, cellY);
-      setCursorX(cellX);
-      setCursorY(cellY);
-    }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const { cellWidth, offsetLeft, offsetTop } = dimensions;
-
-    const cellX = Math.floor((x - offsetLeft) / cellWidth);
-    const cellY = Math.floor((y - offsetTop) / cellWidth);
-
-    if (cellX >= 0 && cellX < gameState.width && cellY >= 0 && cellY < gameState.height) {
-      setHoveredX(cellX);
-      setHoveredY(cellY);
-    } else {
-      setHoveredX(null);
-      setHoveredY(null);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    setHoveredX(null);
-    setHoveredY(null);
-  };
+  }, [gameState, cursorX, cursorY, hoveredX, hoveredY, dimensions, myPlayerId, activeViewPlayerId, zoom, panX, panY]);
 
   return (
     <div ref={containerRef} className="canvas-container" style={{ width: '100%', height: '100%', minHeight: 0, flex: 1, position: 'relative' }}>
       <canvas
         ref={canvasRef}
+        onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
-        onClick={(e) => handleCanvasClick(e, 'reveal')}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onWheel={handleWheel}
         onContextMenu={(e) => {
           e.preventDefault();
-          handleCanvasClick(e, 'flag');
+          if (activeViewPlayerId === myPlayerId) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            const { cellWidth, offsetLeft, offsetTop } = dimensions;
+            const finalCellWidth = cellWidth * zoom;
+
+            const cellX = Math.floor((mx - offsetLeft - panX) / finalCellWidth);
+            const cellY = Math.floor((my - offsetTop - panY) / finalCellWidth);
+
+            if (cellX >= 0 && cellX < gameState.width && cellY >= 0 && cellY < gameState.height) {
+              onCellAction('flag', cellX, cellY);
+              setCursorX(cellX);
+              setCursorY(cellY);
+            }
+          }
         }}
-        style={{ display: 'block', background: '#05030d', borderRadius: '8px', boxShadow: 'inset 0 0 20px rgba(0,255,255,0.1)' }}
+        style={{ display: 'block', background: '#05030d', borderRadius: '8px', boxShadow: 'inset 0 0 20px rgba(0,255,255,0.1)', cursor: isDraggingRef.current ? 'grabbing' : 'grab' }}
       />
       
+      {/* Floating Control overlay for Zoom / Pan / Action Mode */}
+      <div className="board-controls-overlay">
+        {/* Mobile Action Mode Switcher */}
+        <div className="control-group action-toggle-group">
+          <button
+            onClick={() => setMobileActionMode('reveal')}
+            className={`control-btn ${mobileActionMode === 'reveal' ? 'active-reveal' : ''}`}
+            title="Reveal Sector (Left Click / Tap)"
+          >
+            <span className="btn-icon">⛏️</span>
+            <span className="btn-label">REVEAL</span>
+          </button>
+          <button
+            onClick={() => setMobileActionMode('flag')}
+            className={`control-btn ${mobileActionMode === 'flag' ? 'active-flag' : ''}`}
+            title="Flag Hazard (Right Click / Tap)"
+          >
+            <span className="btn-icon">🚩</span>
+            <span className="btn-label">FLAG</span>
+          </button>
+        </div>
+
+        {/* Zoom Controls */}
+        <div className="control-group zoom-controls-group">
+          <button onClick={() => handleZoomBtn(1.2)} className="control-btn" title="Zoom In">
+            <span>＋</span>
+          </button>
+          <button onClick={() => handleZoomBtn(1 / 1.2)} className="control-btn" title="Zoom Out">
+            <span>－</span>
+          </button>
+          <button onClick={() => { setZoom(1.0); setPanX(0); setPanY(0); }} className="control-btn reset-btn" title="Reset View">
+            <span>🔍 RESET</span>
+          </button>
+        </div>
+      </div>
+      
       {/* Keyboard Shortcuts Prompt */}
-      <div style={{
-        position: 'absolute',
-        bottom: '10px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        fontSize: '11px',
-        color: 'rgba(0, 255, 255, 0.45)',
-        fontFamily: "'Share Tech Mono', monospace",
-        pointerEvents: 'none',
-        textAlign: 'center',
-        background: 'rgba(5, 3, 13, 0.8)',
-        padding: '4px 12px',
-        borderRadius: '4px',
-        border: '1px solid rgba(0, 255, 255, 0.1)'
-      }}>
-        [Mouse Left] Clear | [Mouse Right] Flag | [W/A/S/D / Arrows] Move | [Space] Clear | [F] Flag
+      {showHelp && (
+        <div className="keyboard-shortcuts-prompt" style={{
+          position: 'absolute',
+          bottom: '40px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          fontSize: '11px',
+          color: 'rgba(0, 255, 255, 0.85)',
+          fontFamily: "'Share Tech Mono', monospace",
+          pointerEvents: 'none',
+          textAlign: 'center',
+          background: 'rgba(5, 3, 13, 0.95)',
+          padding: '6px 14px',
+          borderRadius: '4px',
+          border: '1px solid rgba(0, 240, 255, 0.25)',
+          boxShadow: '0 0 15px rgba(0, 240, 255, 0.15)',
+          zIndex: 99
+        }}>
+          [Drag] Pan | [Pinch/Scroll] Zoom | [Mouse Left] Clear | [Mouse Right] Flag | [W/A/S/D] Move | [Space] Clear
+        </div>
+      )}
+
+      {/* Help toggle button */}
+      <div 
+        className="help-toggle-btn"
+        style={{
+          position: 'absolute',
+          bottom: '10px',
+          right: '10px',
+          width: '24px',
+          height: '24px',
+          borderRadius: '50%',
+          border: '1px solid rgba(0, 240, 255, 0.3)',
+          background: 'rgba(5, 3, 13, 0.85)',
+          color: 'var(--accent-cyan)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: "'Share Tech Mono', monospace",
+          fontSize: '13px',
+          fontWeight: 'bold',
+          cursor: 'pointer',
+          zIndex: 100,
+          pointerEvents: 'auto',
+          userSelect: 'none',
+          boxShadow: '0 0 8px rgba(0, 240, 255, 0.1)',
+          transition: 'all 0.2s ease'
+        }}
+        onClick={() => setShowHelp(!showHelp)}
+        onMouseEnter={() => setShowHelp(true)}
+        onMouseLeave={() => setShowHelp(false)}
+        title="Show Controls Help"
+      >
+        ?
       </div>
     </div>
   );

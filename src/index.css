@@ -51,7 +51,9 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
   overflow: hidden;
   position: relative;
   z-index: 1;
@@ -210,6 +212,7 @@ body {
   max-width: 1280px;
   width: 100%;
   height: calc(100vh - 64px);
+  height: calc(100dvh - 64px);
   margin: 0 auto;
   box-sizing: border-box;
 }
@@ -346,6 +349,77 @@ body {
   padding: 14px 18px;
   border-radius: 8px;
   font-family: 'Share Tech Mono', monospace;
+  transition: all 0.2s ease;
+}
+
+.reactor-row:hover {
+  border-color: rgba(0, 240, 255, 0.25);
+  background: rgba(0, 240, 255, 0.04);
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.05);
+}
+
+.reactor-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.reactor-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: white;
+  text-transform: uppercase;
+}
+
+.reactor-details {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reactor-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.badge-code {
+  padding: 4px 8px;
+  background: rgba(255, 183, 3, 0.15);
+  border: 1px solid rgba(255, 183, 3, 0.4);
+  color: var(--accent-gold);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: 'Share Tech Mono', monospace;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+}
+
+.badge-status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: 'Share Tech Mono', monospace;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+}
+
+.badge-status-turn {
+  background: rgba(0, 240, 255, 0.15);
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.badge-status-wait {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-muted);
 }
 
 .reactors-empty {
@@ -428,6 +502,7 @@ body {
   flex-direction: column;
   padding: 24px;
   height: calc(100vh - 64px);
+  height: calc(100dvh - 64px);
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
@@ -639,30 +714,111 @@ body {
   background: rgba(0, 240, 255, 0.45);
 }
 
+/* In-Game HUD Sub-tabs & Sections (Desktop Defaults) */
+.hud-subtabs-container {
+  display: none;
+}
+
+.hud-section-sweepers,
+.hud-section-logs {
+  display: flex !important;
+}
+
+.help-toggle-btn:hover {
+  border-color: var(--accent-cyan) !important;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.4) !important;
+  color: white !important;
+  text-shadow: 0 0 5px var(--accent-cyan);
+}
+
+/* Responsive HUD Sub-tabs (Visible on mobile portrait/landscape) */
+@media (max-width: 900px), (max-height: 600px) {
+  .hud-subtabs-container {
+    display: flex !important;
+    gap: 8px;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+  }
+
+  .hud-subtab-btn {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    color: var(--text-muted);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    padding: 6px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-weight: bold;
+    transition: all 0.2s;
+  }
+
+  .hud-subtab-btn-active {
+    color: var(--accent-cyan) !important;
+    border-color: var(--accent-cyan) !important;
+    background: rgba(0, 240, 255, 0.1) !important;
+    box-shadow: 0 0 8px rgba(0, 240, 255, 0.15);
+  }
+
+  .hud-section-active {
+    display: flex !important;
+  }
+
+  .hud-section-inactive {
+    display: none !important;
+  }
+}
+
 /* Media Queries for Responsiveness */
 @media (max-width: 900px) {
   .dashboard-layout {
     grid-template-columns: 1fr;
-    height: auto;
-    max-height: none;
-    overflow: visible;
+    height: calc(100dvh - 64px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 16px;
+    gap: 16px;
   }
+  
   .main-panel, .side-panel {
     grid-column: span 1;
     height: auto;
     overflow: visible;
   }
+  
+  .dashboard-grid-widgets {
+    grid-template-columns: 1fr !important;
+    gap: 16px;
+  }
+  
+  .reactors-container {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+  
+  .reactors-list {
+    height: auto !important;
+    overflow: visible !important;
+    padding-right: 0;
+  }
+  
   .dashboard-layout.tab-active-grids .tab-content-recipes {
     display: none;
   }
+  
   .dashboard-layout.tab-active-archives .tab-content-reactors {
     display: none;
   }
+  
   .mobile-tabs-container {
     display: flex;
     border-bottom: 1px solid rgba(0, 240, 255, 0.15);
     margin-bottom: 16px;
   }
+  
   .tab-btn {
     flex: 1;
     background: transparent;
@@ -674,16 +830,33 @@ body {
     font-weight: bold;
     border-bottom: 2px solid transparent;
   }
+  
   .tab-btn-active {
     color: var(--accent-magenta);
     border-bottom-color: var(--accent-magenta);
   }
+  
+  .game-layout {
+    padding: 12px;
+    gap: 12px;
+  }
+  
   .play-grid-wrapper {
     grid-template-columns: 1fr !important;
+    height: 100% !important;
   }
+  
+  .board-outer-container {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+  }
+  
   .game-hud-panel {
-    height: auto !important;
-    min-height: 300px;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
   }
   .header-actions {
     display: none;
@@ -714,4 +887,175 @@ body {
     border-bottom: 1px dashed rgba(255,255,255,0.05);
     padding-bottom: 8px;
   }
+  
+  /* Mobile Portrait active/inactive panes */
+  .mobile-game-tabs {
+    display: flex !important;
+    grid-column: span 1;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+    margin-bottom: 12px;
+    gap: 8px;
+    width: 100%;
+  }
+  
+  .mobile-active-pane {
+    display: flex !important;
+  }
+  
+  .mobile-inactive-pane {
+    display: none !important;
+  }
+  
+  .board-outer-container {
+    height: 55vh !important;
+    min-height: 420px !important;
+  }
 }
+
+/* Floating board control overlay */
+.board-controls-overlay {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none; /* let clicks pass to canvas if not on buttons */
+  z-index: 10;
+}
+
+.board-controls-overlay .control-group {
+  display: flex;
+  background: rgba(5, 3, 13, 0.85);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: 6px;
+  padding: 4px;
+  gap: 4px;
+  pointer-events: auto; /* enable click on buttons */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.board-controls-overlay .control-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(0, 240, 255, 0.1);
+  color: #a3a1cc;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.board-controls-overlay .control-btn:hover {
+  background: rgba(0, 240, 255, 0.15);
+  border-color: rgba(0, 240, 255, 0.5);
+  color: #00ffff;
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.2);
+}
+
+.board-controls-overlay .control-btn.active-reveal {
+  background: rgba(0, 240, 255, 0.2);
+  border-color: #00ffff;
+  color: #00ffff;
+  text-shadow: 0 0 5px #00ffff;
+}
+
+.board-controls-overlay .control-btn.active-flag {
+  background: rgba(255, 0, 85, 0.2);
+  border-color: var(--accent-magenta, #ff0055);
+  color: var(--accent-magenta, #ff0055);
+  text-shadow: 0 0 5px var(--accent-magenta, #ff0055);
+}
+
+.board-controls-overlay .reset-btn {
+  font-size: 10px;
+}
+
+/* Landscape Mobile Layout Adjustments */
+@media (max-height: 600px) and (orientation: landscape) {
+  .header-bar {
+    height: 48px;
+  }
+  
+  .game-layout {
+    padding: 8px;
+    gap: 8px;
+    height: calc(100vh - 48px);
+    height: calc(100dvh - 48px);
+  }
+  
+  .game-info-strip {
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+  
+  .board-outer-container {
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+  
+  .play-grid-wrapper {
+    grid-template-columns: 2fr 1fr !important;
+    display: grid !important;
+    height: 100%;
+  }
+  
+  .game-hud-panel {
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+  
+  .mobile-game-tabs {
+    display: none !important;
+  }
+  
+  .mobile-active-pane, 
+  .mobile-inactive-pane {
+    display: flex !important;
+  }
+}
+
+/* Narrow mobile viewports */
+@media (max-width: 600px) {
+  .reactor-row {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 12px;
+    padding: 12px 14px;
+  }
+  
+  .reactor-details {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .reactor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-start;
+    width: 100%;
+    margin-top: 4px;
+    border-top: 1px dashed rgba(0, 240, 255, 0.15);
+    padding-top: 8px;
+  }
+
+  .reactor-actions button {
+    flex: 1;
+    min-width: 70px;
+    padding: 6px 8px !important;
+  }
+  
+  .badge-code, .badge-status {
+    flex-grow: 0;
+    text-align: center;
+  }
+}
+

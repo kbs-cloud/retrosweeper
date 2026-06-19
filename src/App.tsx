@@ -1,28 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Shield, 
-  User, 
-  LogOut, 
-  Plus, 
-  Volume2, 
-  VolumeX, 
-  RefreshCw,
-  Trophy,
-  History,
-  Globe,
-  Menu,
-  X,
-  Flag,
-  Zap,
-  Grid
-} from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import type { GameState } from './game/gameState';
 import { isPlayerVacant } from './game/gameState';
-import { apiFetch, isOnlineMode } from './services/api';
 import { authService } from './services/authService';
 import { gameService } from './services/gameService';
 import { startSSOBackgroundCheck, redirectToSSO } from './shared/auth/sso-helper';
 import { GameBoard } from './components/GameBoard';
+import { Header } from './components/Header';
+import { AuthScreen } from './components/AuthScreen';
+import { AuthPollingScreen } from './components/AuthPollingScreen';
+import { Dashboard } from './components/Dashboard';
+import { CreateGameModal } from './components/CreateGameModal';
+import { LobbySetup } from './components/LobbySetup';
+import { GameHUD } from './components/GameHUD';
 
 function getHubUrl(): string {
   if (typeof window === 'undefined') return 'http://localhost:19000';
@@ -69,6 +59,8 @@ export default function App() {
   const [connectedPlayers, setConnectedPlayers] = useState<string[]>([]);
   const [gameActionError, setGameActionError] = useState('');
   const [activeViewPlayerId, setActiveViewPlayerId] = useState<string | null>(null);
+  const [gameTab, setGameTab] = useState<'board' | 'hud'>('board');
+  const [hudTab, setHudTab] = useState<'sweepers' | 'logs'>('sweepers');
 
   // Lobby lists
   const [joinRequests, setJoinRequests] = useState<any[]>([]);
@@ -76,10 +68,23 @@ export default function App() {
   // Polling ref
   const pollIntervalRef = useRef<any>(null);
   const stateRef = useRef({ currentGameId, user, activeViewPlayerId });
+  const terminalRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     stateRef.current = { currentGameId, user, activeViewPlayerId };
   }, [currentGameId, user, activeViewPlayerId]);
+
+  // Scroll to bottom of terminal when game loads or new log entries arrive
+  useEffect(() => {
+    const scrollToBottom = () => {
+      if (terminalRef.current) {
+        terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+      }
+    };
+    scrollToBottom();
+    const timeoutId = setTimeout(scrollToBottom, 50);
+    return () => clearTimeout(timeoutId);
+  }, [currentGameId, currentGame?.history.length, hudTab]);
 
   // Init CSRF
   useEffect(() => {
@@ -334,6 +339,10 @@ export default function App() {
 
     try {
       const searchData = await gameService.listGames(inviteCodeInput.trim());
+      if (searchData.success === false) {
+        setJoinError(searchData.error || 'Failed to search sector.');
+        return;
+      }
       const found = searchData.games?.find((g: any) => g.inviteCode === inviteCodeInput.trim().toUpperCase() || g.id === inviteCodeInput.trim());
       if (found) {
         const joinData = await gameService.joinGame(found.id);
@@ -342,7 +351,7 @@ export default function App() {
           setInviteCodeInput('');
           loadGames();
         } else {
-          setJoinError('Lobby link refused.');
+          setJoinError(joinData.error || 'Lobby link refused.');
         }
       } else {
         setJoinError('Hazard sector code not found.');
@@ -485,385 +494,61 @@ export default function App() {
   }
 
   if (isGooglePolling) {
-    return (
-      <div className="auth-container">
-        <div className="lab-grid" />
-        <div className="glass-panel auth-card">
-          <div className="auth-header">
-            <h2 className="auth-title">ESTABLISHING LINK</h2>
-            <p className="auth-subtitle">Trans-Node Authorization</p>
-          </div>
-          <p className="auth-desc">
-            Please log in using your external web browser window.
-          </p>
-          <div className="loader-icon spin-loader" style={{ margin: '0 auto 24px auto' }} />
-          <button 
-            onClick={() => {
-              localStorage.removeItem('retrosweeper_auth_pending_token');
-              setIsGooglePolling(false);
-            }}
-            className="btn-sci-fi btn-danger auth-btn-login"
-          >
-            Cancel Authentication Request
-          </button>
-        </div>
-      </div>
-    );
+    return <AuthPollingScreen onCancel={() => {
+      localStorage.removeItem('retrosweeper_auth_pending_token');
+      setIsGooglePolling(false);
+    }} />;
   }
 
   if (!user) {
-    return (
-      <div className="auth-container">
-        <div className="lab-grid" />
-        <div className="glass-panel auth-card">
-          <div className="auth-header" style={{ textAlign: 'center' }}>
-            <Flag className="auth-logo-icon" style={{ color: 'var(--accent-magenta)', width: '48px', height: '48px', margin: '0 auto 12px auto' }} />
-            <h1 className="auth-title" style={{ fontSize: '28px', letterSpacing: '2px' }}>RETRO<span style={{ color: 'var(--accent-magenta)' }}>SWEEPER</span></h1>
-            <p className="auth-subtitle">Cyberpunk Hazard Clearing Protocol</p>
-          </div>
-
-          {authError && <div className="auth-error-banner" style={{ margin: '16px 0' }}>LINK SYSTEM ERROR: {authError}</div>}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '24px' }}>
-            {playOnline ? (
-              <button onClick={redirectToAuth} className="btn-sci-fi btn-sci-fi-gold auth-btn-login" style={{ width: '100%' }}>
-                <Globe className="h-4 w-4" /> SECURE LINK VIA KBS SSO
-              </button>
-            ) : (
-              <button 
-                onClick={() => {
-                  setUser({ email: 'apprentice@local', displayName: 'Local Sweeper', stats: { gamesPlayed: 0, gamesWon: 0 } });
-                }} 
-                className="btn-sci-fi auth-btn-login" 
-                style={{ width: '100%' }}
-              >
-                <Zap className="h-4 w-4" /> LAUNCH LOCAL GUEST GRID
-              </button>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', fontSize: '12px', marginTop: '10px' }}>
-              <span style={{ color: 'rgba(255,255,255,0.45)' }}>CONNECTION PROTOCOL:</span>
-              <button 
-                onClick={() => setPlayOnline(!playOnline)}
-                className={`badge-status ${playOnline ? 'badge-status-turn' : 'badge-status-wait'}`}
-                style={{ border: 'none', cursor: 'pointer', padding: '4px 10px', fontSize: '11px' }}
-              >
-                {playOnline ? 'ONLINE (SSO)' : 'OFFLINE (LOCAL)'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <AuthScreen 
+      authError={authError}
+      playOnline={playOnline}
+      setPlayOnline={setPlayOnline}
+      redirectToAuth={redirectToAuth}
+      setUser={setUser}
+    />;
   }
 
   const mySlot = currentGame?.players.find(p => p.assignedEmail === user?.email || (user?.email === 'apprentice@local' && p.id === 'player_1'));
-  const isCurrentlyGlitched = mySlot && mySlot.glitchUntil > Date.now();
 
   return (
     <div className="app-container">
       <div className="lab-grid" />
 
-      {/* Header bar */}
-      <header className="header-bar">
-        <div className="header-logo">
-          <Flag className="header-logo-icon" style={{ color: 'var(--accent-magenta)' }} />
-          <span className="header-title">
-            RETRO<span style={{ color: 'var(--accent-magenta)' }}>SWEEPER</span>
-          </span>
-        </div>
-        
-        {/* Desktop Header Actions */}
-        <div className="header-actions">
-          <div className="header-action-group">
-            <Globe className={`h-4 w-4 ${playOnline ? 'connection-badge-pulse' : 'text-gray-500'}`} />
-            <select
-              value={playOnline ? 'online' : 'offline'}
-              onChange={e => setPlayOnline(e.target.value === 'online')}
-              className="connection-selector"
-            >
-              <option value="online">ONLINE</option>
-              <option value="offline">OFFLINE</option>
-            </select>
-          </div>
-          {!currentGameId ? (
-            <a 
-              href={getHubUrl()} 
-              className="header-btn-back" 
-              style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-            >
-              HUB CATALOG
-            </a>
-          ) : (
-            <button 
-              onClick={() => {
-                if (confirm("Disconnect sweep link and return to sector maps?")) {
-                  setCurrentGameId(null);
-                  setCurrentGame(null);
-                  loadGames();
-                }
-              }}
-              className="header-btn-back"
-            >
-              ← SECTOR MAP
-            </button>
-          )}
+      <Header 
+        playOnline={playOnline}
+        setPlayOnline={setPlayOnline}
+        currentGameId={currentGameId}
+        setCurrentGameId={setCurrentGameId}
+        setCurrentGame={setCurrentGame}
+        loadGames={loadGames}
+        muted={muted}
+        setMuted={setMuted}
+        user={user}
+        handleLogout={handleLogout}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        getHubUrl={getHubUrl}
+      />
 
-          <button
-            onClick={() => setMuted(!muted)}
-            className="header-btn-mute"
-            title={muted ? 'Unmute grid alerts' : 'Mute grid alerts'}
-          >
-            {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-          </button>
-
-          <div className="header-user-section">
-            <User className="header-user-icon" />
-            <span className="header-user-name">{user.displayName || user.email.split('@')[0]}</span>
-          </div>
-
-          <button onClick={handleLogout} className="header-btn-disconnect">
-            <LogOut className="h-4 w-4" /> DISCONNECT
-          </button>
-        </div>
-
-        {/* Mobile Hamburger Drawer Toggle */}
-        <button 
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
-          className="header-drawer-toggle"
-          title="Toggle settings drawer"
-        >
-          {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
-
-        {/* Mobile Settings Drawer Menu */}
-        {mobileMenuOpen && (
-          <div className="header-mobile-drawer">
-            <div className="mobile-drawer-row">
-              <span>SYSTEM CONNECTION:</span>
-              <select
-                value={playOnline ? 'online' : 'offline'}
-                onChange={e => {
-                  setPlayOnline(e.target.value === 'online');
-                  setMobileMenuOpen(false);
-                }}
-                className="connection-selector"
-              >
-                <option value="online">ONLINE</option>
-                <option value="offline">OFFLINE</option>
-              </select>
-            </div>
-            {!currentGameId ? (
-              <div className="mobile-drawer-row">
-                <span>CATALOG:</span>
-                <a 
-                  href={getHubUrl()} 
-                  className="header-btn-back"
-                  style={{ textDecoration: 'none' }}
-                >
-                  HUB CATALOG
-                </a>
-              </div>
-            ) : (
-              <div className="mobile-drawer-row">
-                <span>SECTOR MAPS:</span>
-                <button 
-                  onClick={() => {
-                    setCurrentGameId(null);
-                    setCurrentGame(null);
-                    loadGames();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="header-btn-back"
-                >
-                  ← SECTOR MAP
-                </button>
-              </div>
-            )}
-            <div className="mobile-drawer-row">
-              <span>SOUND ALERTS:</span>
-              <button
-                onClick={() => setMuted(!muted)}
-                className="header-btn-mute"
-                style={{ padding: '4px 10px', fontSize: '11px', fontFamily: 'Share Tech Mono', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', cursor: 'pointer' }}
-              >
-                {muted ? <span style={{ color: 'var(--accent-magenta)' }}>MUTED</span> : <span style={{ color: '#10b981' }}>ACTIVE</span>}
-              </button>
-            </div>
-            <div className="mobile-drawer-row">
-              <span>SWEEPER:</span>
-              <span style={{ color: 'var(--accent-magenta)', fontWeight: 'bold' }}>{user.displayName || user.email.split('@')[0]}</span>
-            </div>
-            <div className="mobile-drawer-row">
-              <span>LOGOUT LOG:</span>
-              <button 
-                onClick={() => {
-                  handleLogout();
-                  setMobileMenuOpen(false);
-                }} 
-                className="header-btn-disconnect"
-              >
-                <LogOut className="h-4 w-4" /> DISCONNECT
-              </button>
-            </div>
-          </div>
-        )}
-      </header>
-
-      {/* --- DASHBOARD LOBBIES / ARCHIVE VIEW --- */}
       {!currentGameId ? (
-        <main className={`dashboard-layout tab-active-${dashboardTab}`}>
-          {/* Mobile only Tab system */}
-          <div className="mobile-tabs-container" style={{ gridColumn: 'span 4' }}>
-            <button 
-              onClick={() => setDashboardTab('grids')} 
-              className={`tab-btn ${dashboardTab === 'grids' ? 'tab-btn-active' : ''}`}
-            >
-              Grids
-            </button>
-            <button 
-              onClick={() => setDashboardTab('archives')} 
-              className={`tab-btn ${dashboardTab === 'archives' ? 'tab-btn-active' : ''}`}
-            >
-              Achievements
-            </button>
-          </div>
-
-          <div className="main-panel tab-content-reactors">
-            <div className="dashboard-title-section">
-              <div>
-                <h2 className="dashboard-title-heading">HAZARD GRID SECTORS</h2>
-                <p className="dashboard-title-subtext">Establish a terminal link to start sweeping mines</p>
-              </div>
-              <button onClick={() => setShowCreateModal(true)} className="btn-sci-fi btn-sci-fi-gold">
-                <Plus className="h-4 w-4" /> INITIALIZE SWEEP FIELD
-              </button>
-            </div>
-
-            <div className="dashboard-grid-widgets">
-              {/* Join Game Box */}
-              <div className="glass-panel glass-panel-neon-purple" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div>
-                  <h3 className="widget-title">ESTABLISH SECTOR LINK</h3>
-                  <p className="widget-subtitle">Enter sector authorization code to connect</p>
-                </div>
-                {joinError && <div className="auth-error-banner">ERROR: {joinError}</div>}
-                {joinSuccess && <div className="notice-success" style={{ padding: '8px', fontSize: '11px', fontFamily: 'Share Tech Mono', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '6px' }}>SUCCESS: {joinSuccess}</div>}
-                <form onSubmit={handleJoinGame} style={{ display: 'flex', gap: '8px' }}>
-                  <input 
-                    type="text" 
-                    required
-                    placeholder="SECTOR CODE" 
-                    className="terminal-input"
-                    style={{ flex: 1, textTransform: 'uppercase' }}
-                    value={inviteCodeInput}
-                    onChange={e => setInviteCodeInput(e.target.value)}
-                  />
-                  <button type="submit" className="btn-sci-fi">LINK</button>
-                </form>
-              </div>
-
-              {/* Stats Box */}
-              <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '16px' }}>
-                <div>
-                  <h3 className="widget-title widget-title-muted">HAZARD CLEARANCE LOGS</h3>
-                  <p className="widget-subtitle">Telemetry results from active sweeper</p>
-                </div>
-                <div className="stats-grid">
-                  <div className="stat-box">
-                    <div className="stat-label">Sectors Scanned</div>
-                    <div className="stat-value">{user.stats?.gamesPlayed || 0} Grids</div>
-                  </div>
-                  <div className="stat-box">
-                    <div className="stat-label">System Swept</div>
-                    <div className="stat-value stat-value-gold" style={{ color: 'var(--accent-magenta)' }}>{user.stats?.gamesWon || 0} Cleared</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Games list */}
-            <div className="glass-panel reactors-container">
-              <h3 className="widget-title widget-title-muted" style={{ marginBottom: '16px' }}>ACTIVE GRID SECTORS</h3>
-              {games.length === 0 ? (
-                <div className="reactors-empty">
-                  <p className="reactors-empty-text">No active grid scans detected. Spawn a sector field above.</p>
-                </div>
-              ) : (
-                <div className="reactors-list">
-                  {games.map(game => {
-                    const host = game.ownerEmail || 'Local';
-                    const playerCt = game.gameState.players?.filter((p: any) => !isPlayerVacant(p, game.gameState.status)).length || 1;
-                    
-                    return (
-                      <div key={game.id} className="reactor-row">
-                        <div className="reactor-info">
-                          <span className="reactor-name">{game.name || 'Unnamed Grid'}</span>
-                          <span className="reactor-details">HOST: {host} | Grid: {game.gameState.width}x{game.gameState.height} | Mines: {game.gameState.mineCount} | Sweepers: {playerCt}</span>
-                        </div>
-                        <div className="reactor-actions">
-                          <span className="badge-code">
-                            CODE: {game.inviteCode}
-                          </span>
-                          <span className={`badge-status ${game.gameState.status === 'playing' ? 'badge-status-turn' : 'badge-status-wait'}`}>
-                            {game.gameState.status === 'setup' ? 'PREPARING' : game.gameState.status === 'completed' ? 'PURGED' : 'SCANNING'}
-                          </span>
-                          <button 
-                            onClick={() => setCurrentGameId(game.id)}
-                            className="btn-sci-fi"
-                            style={{ padding: '6px 14px', fontSize: '12px' }}
-                          >
-                            LINK
-                          </button>
-                          {(game.ownerEmail === user.email || user.email === 'apprentice@local') && (
-                            <button 
-                              onClick={() => handleDeleteGame(game.id)}
-                              className="btn-sci-fi btn-danger"
-                              style={{ padding: '6px 10px', fontSize: '12px' }}
-                            >
-                              PURGE
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Achievements Tab Panel */}
-          <div className="side-panel tab-content-recipes">
-            <h3 className="panel-title">SWEEPER CORES & ARCHIVES</h3>
-            <p className="panel-subtitle" style={{ marginBottom: '20px' }}>Global security achievements linked to account</p>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div className="glass-panel" style={{ padding: '16px', background: 'rgba(0, 255, 255, 0.03)' }}>
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '24px' }}>🚩</span>
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '13px', color: '#00ffff' }}>Flawless Sweep</h4>
-                    <p style={{ margin: 0, fontSize: '11px', color: 'rgba(255,255,255,0.45)' }}>Clear a grid sector with zero incorrect flags set.</p>
-                  </div>
-                </div>
-              </div>
-              <div className="glass-panel" style={{ padding: '16px', background: 'rgba(255, 0, 85, 0.03)' }}>
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '24px' }}>💥</span>
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--accent-magenta)' }}>Glitch Survivor</h4>
-                    <p style={{ margin: 0, fontSize: '11px', color: 'rgba(255,255,255,0.45)' }}>Win a scan after surviving a cyber-mine CRT detonation lock.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </main>
+        <Dashboard 
+          dashboardTab={dashboardTab}
+          setDashboardTab={setDashboardTab}
+          setShowCreateModal={setShowCreateModal}
+          joinError={joinError}
+          joinSuccess={joinSuccess}
+          inviteCodeInput={inviteCodeInput}
+          setInviteCodeInput={setInviteCodeInput}
+          handleJoinGame={handleJoinGame}
+          user={user}
+          games={games}
+          setCurrentGameId={setCurrentGameId}
+          handleDeleteGame={handleDeleteGame}
+        />
       ) : (
-        /* --- ACTIVE SECTOR INTERFACE --- */
         <main className="game-layout">
-          {/* Top Bar for Game info */}
           <div className="game-info-strip">
             <div>
               <span className="game-info-label">SECTOR: </span>
@@ -889,86 +574,34 @@ export default function App() {
             {gameActionError && <div className="game-error-banner">COMMUNICATIONS FAULT: {gameActionError}</div>}
 
             {currentGame?.status === 'setup' ? (
-              <div className="glass-panel lobby-setup-container" style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '30px', margin: '0 auto', maxWidth: '600px', textAlign: 'center' }}>
-                <div>
-                  <h3 className="widget-title" style={{ fontSize: '20px' }}>GRID SWEEPER ROSTER</h3>
-                  <p className="widget-subtitle">Verify connections and assign sweep channels before ignition</p>
-                </div>
-
-                <div className="lobby-slots-list" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {currentGame?.players.map(p => {
-                    const isVacant = isPlayerVacant(p, currentGame.status);
-                    return (
-                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '10px 16px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                        <span style={{ fontSize: '13px', fontFamily: 'Share Tech Mono' }}>CHANNEL {p.id.split('_')[1]}: <span style={{ color: isVacant ? 'rgba(255,255,255,0.2)' : '#00ffff' }}>{p.name}</span></span>
-                        
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          {isVacant ? (
-                            <>
-                              <button 
-                                onClick={() => handleAssignSlot(p.id, { isLocal: true, name: user.displayName || user.email.split('@')[0], email: user.email })}
-                                className="btn-sci-fi"
-                                style={{ padding: '4px 10px', fontSize: '11px' }}
-                              >
-                                CLAIM
-                              </button>
-                              <button 
-                                onClick={() => handleAssignSlot(p.id, { isAi: true, aiDifficulty: 'easy' })}
-                                className="btn-sci-fi"
-                                style={{ padding: '4px 6px', fontSize: '10px', borderColor: 'var(--accent-magenta)' }}
-                              >
-                                AI EASY
-                              </button>
-                              <button 
-                                onClick={() => handleAssignSlot(p.id, { isAi: true, aiDifficulty: 'medium' })}
-                                className="btn-sci-fi"
-                                style={{ padding: '4px 6px', fontSize: '10px', borderColor: 'var(--accent-magenta)' }}
-                              >
-                                AI MED
-                              </button>
-                              <button 
-                                onClick={() => handleAssignSlot(p.id, { isAi: true, aiDifficulty: 'hard' })}
-                                className="btn-sci-fi"
-                                style={{ padding: '4px 6px', fontSize: '10px', borderColor: 'var(--accent-magenta)' }}
-                              >
-                                AI HARD
-                              </button>
-                            </>
-                          ) : (
-                            <button 
-                              onClick={() => handleAssignSlot(p.id, { isLocal: false, email: null, name: `Sweeper ${p.id.split('_')[1]}` })}
-                              className="btn-sci-fi btn-danger"
-                              style={{ padding: '4px 10px', fontSize: '11px' }}
-                              disabled={p.id === 'player_1' && ownerEmail === user.email}
-                            >
-                              CLEAR
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {ownerEmail === user.email || user.email === 'apprentice@local' ? (
-                  <button 
-                    onClick={handleStartGame} 
-                    className="btn-sci-fi btn-sci-fi-gold"
-                    style={{ width: '100%', padding: '12px' }}
-                  >
-                    IGNITE SWEEP SIGNAL
-                  </button>
-                ) : (
-                  <div className="terminal-log-row" style={{ color: 'var(--accent-magenta)' }}>
-                    [SYSTEM LOG] Awaiting signal trigger from system host...
-                  </div>
-                )}
-              </div>
+              <LobbySetup 
+                currentGame={currentGame}
+                user={user}
+                ownerEmail={ownerEmail}
+                handleAssignSlot={handleAssignSlot}
+                handleStartGame={handleStartGame}
+              />
             ) : (
               <div className="play-grid-wrapper" style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '20px', height: '100%' }}>
                 
+                {/* Mobile Game View Tabs */}
+                <div className="mobile-game-tabs" style={{ display: 'none' }}>
+                  <button 
+                    onClick={() => setGameTab('board')} 
+                    className={`tab-btn ${gameTab === 'board' ? 'tab-btn-active' : ''}`}
+                  >
+                    📡 SCAN GRID
+                  </button>
+                  <button 
+                    onClick={() => setGameTab('hud')} 
+                    className={`tab-btn ${gameTab === 'hud' ? 'tab-btn-active' : ''}`}
+                  >
+                    📊 HUD MONITOR
+                  </button>
+                </div>
+
                 {/* Left side: Canvas game board */}
-                <div className="board-outer-container" style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+                <div className={`board-outer-container ${gameTab === 'board' ? 'mobile-active-pane' : 'mobile-inactive-pane'}`} style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
                   {currentGame && (
                     <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', overflowX: 'auto', paddingBottom: '4px' }}>
                       <span style={{ fontSize: '12px', fontFamily: 'Share Tech Mono', color: 'rgba(255, 255, 255, 0.45)', display: 'flex', alignItems: 'center', marginRight: '8px' }}>
@@ -1023,152 +656,45 @@ export default function App() {
                       gameState={currentGame}
                       myPlayerId={mySlot?.id || 'player_1'}
                       onCellAction={handleCellAction}
-                      isMyTurn={true} // In Minesweeper sweepers play continuously
+                      isMyTurn={true}
                       activeViewPlayerId={activeViewPlayerId || mySlot?.id || 'player_1'}
                     />
                   )}
                 </div>
 
-                {/* Right side: HUD Dashboard */}
-                <div className="game-hud-panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px', background: 'rgba(5, 3, 13, 0.6)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(0, 255, 255, 0.1)', height: '100%', minHeight: 0 }}>
-                  <div>
-                    <h3 className="widget-title">ACTIVE SWEEPERS</h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px', overflowY: 'auto', maxHeight: '180px' }}>
-                      {currentGame?.players.filter(p => !isPlayerVacant(p, currentGame.status)).map(p => {
-                        const isGlitched = p.glitchUntil > Date.now();
-                        const totalSafe = currentGame ? (currentGame.width * currentGame.height - currentGame.mineCount) : 1;
-                        const progressPercent = currentGame ? Math.round((p.score / totalSafe) * 100) : 0;
-
-                        return (
-                          <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255, 255, 255, 0.02)', padding: '8px 12px', borderRadius: '4px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                            <span style={{ fontSize: '12px', color: p.id === mySlot?.id ? '#00ffff' : 'white' }}>{p.name} {p.isAi && '🤖'}</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              {p.status === 'completed' ? (
-                                <span className="badge-status-turn" style={{ fontSize: '9px', padding: '2px 6px' }}>CLEARED</span>
-                              ) : p.status === 'failed' ? (
-                                <span className="badge-status-wait" style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(255, 0, 85, 0.2)', color: '#ff0055', borderColor: '#ff0055' }}>OUT</span>
-                              ) : isGlitched ? (
-                                <span className="badge-status-wait" style={{ fontSize: '9px', padding: '2px 6px' }}>GLITCHED</span>
-                              ) : null}
-                              <span style={{ fontFamily: 'Share Tech Mono', fontSize: '12px', color: 'var(--accent-magenta)', fontWeight: 'bold' }}>{p.score} / {totalSafe} ({progressPercent}%)</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                    <h3 className="widget-title">ACTIVITY MONITOR</h3>
-                    <div className="activity-terminal" style={{ flex: 1, overflowY: 'auto', background: '#030107', padding: '10px', borderRadius: '4px', border: '1px solid rgba(0, 255, 255, 0.05)', fontSize: '11px', fontFamily: 'Share Tech Mono', color: '#00ffcc', lineHeight: '1.4' }}>
-                      {currentGame?.history.map((log, index) => (
-                        <div key={index} style={{ marginBottom: '6px', borderBottom: '1px dashed rgba(0, 255, 255, 0.05)', paddingBottom: '4px' }}>{log}</div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={handleResetGame} className="btn-sci-fi btn-sci-fi-gold" style={{ flex: 1, padding: '8px' }}>RESET FIELD</button>
-                    <button 
-                      onClick={() => {
-                        if (confirm("Disconnect sweep link and return to sector maps?")) {
-                          setCurrentGameId(null);
-                          setCurrentGame(null);
-                          loadGames();
-                        }
-                      }} 
-                      className="btn-sci-fi" 
-                      style={{ padding: '8px' }}
-                    >
-                      EXIT
-                    </button>
-                  </div>
-                </div>
+                <GameHUD 
+                  gameTab={gameTab}
+                  hudTab={hudTab}
+                  setHudTab={setHudTab}
+                  currentGame={currentGame}
+                  mySlot={mySlot}
+                  terminalRef={terminalRef}
+                  handleResetGame={handleResetGame}
+                  setCurrentGameId={setCurrentGameId}
+                  setCurrentGame={setCurrentGame}
+                  loadGames={loadGames}
+                />
               </div>
             )}
           </div>
         </main>
       )}
 
-      {/* --- CREATE NEW CRUCIBLE MODAL --- */}
       {showCreateModal && (
-        <div className="modal-overlay">
-          <div className="glass-panel modal-card" style={{ maxWidth: '400px', width: '90%' }}>
-            <div className="modal-header">
-              <h3 className="modal-title">INITIALIZE SWEEP FIELD</h3>
-              <button onClick={() => setShowCreateModal(false)} className="modal-close-btn"><X className="h-4 w-4" /></button>
-            </div>
-            <form onSubmit={handleCreateGame} className="modal-form" style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
-              <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>FIELD NAME</label>
-                <input 
-                  type="text" 
-                  required
-                  placeholder="e.g. Sector 9" 
-                  className="terminal-input"
-                  value={createGameName}
-                  onChange={e => setCreateGameName(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>SWEEPER PORTS (MAX PLAYERS)</label>
-                <select 
-                  className="terminal-input"
-                  value={maxPlayers}
-                  onChange={e => setMaxPlayers(parseInt(e.target.value))}
-                >
-                  <option value="1">1 Sweeper (Single Player)</option>
-                  <option value="2">2 Sweepers</option>
-                  <option value="3">3 Sweepers</option>
-                  <option value="4">4 Sweepers</option>
-                </select>
-              </div>
-
-              <div className="form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>GRID WIDTH</label>
-                  <input 
-                    type="number" 
-                    required 
-                    min="5" 
-                    max="25"
-                    className="terminal-input"
-                    value={boardWidth}
-                    onChange={e => setBoardWidth(parseInt(e.target.value))}
-                  />
-                </div>
-                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>GRID HEIGHT</label>
-                  <input 
-                    type="number" 
-                    required 
-                    min="5" 
-                    max="25"
-                    className="terminal-input"
-                    value={boardHeight}
-                    onChange={e => setBoardHeight(parseInt(e.target.value))}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>HAZARD MINE COUNT</label>
-                <input 
-                  type="number" 
-                  required 
-                  min="1" 
-                  max={Math.floor((boardWidth * boardHeight) * 0.4)}
-                  className="terminal-input"
-                  value={mineCount}
-                  onChange={e => setMineCount(parseInt(e.target.value))}
-                />
-              </div>
-
-              <button type="submit" className="btn-sci-fi btn-sci-fi-gold" style={{ width: '100%', marginTop: '10px', padding: '10px' }}>LAUNCH SECTOR MATRIX</button>
-            </form>
-          </div>
-        </div>
+        <CreateGameModal 
+          onClose={() => setShowCreateModal(false)}
+          onCreateGame={handleCreateGame}
+          createGameName={createGameName}
+          setCreateGameName={setCreateGameName}
+          maxPlayers={maxPlayers}
+          setMaxPlayers={setMaxPlayers}
+          boardWidth={boardWidth}
+          setBoardWidth={setBoardWidth}
+          boardHeight={boardHeight}
+          setBoardHeight={setBoardHeight}
+          mineCount={mineCount}
+          setMineCount={setMineCount}
+        />
       )}
     </div>
   );
