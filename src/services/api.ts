@@ -26,7 +26,16 @@ export async function apiFetch(url: string, options: RequestInit = {}) {
     headers['X-Session-ID'] = sessionId;
   }
 
-  return fetch(url, {
+  // Detect local backend or standard relative endpoints
+  const isPackaged = typeof window !== 'undefined' && 
+                     (window.location.protocol === 'file:' || 
+                      window.location.hostname === '' ||
+                      navigator.userAgent.toLowerCase().includes('electron'));
+  
+  const origin = isPackaged ? 'http://localhost:28006' : '';
+  const finalUrl = url.startsWith('/') ? `${origin}${url}` : url;
+
+  return fetch(finalUrl, {
     credentials: 'include',
     ...options,
     headers

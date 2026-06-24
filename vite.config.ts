@@ -18,6 +18,7 @@ export default defineConfig({
   resolve: {
     preserveSymlinks: true
   },
+  base: './',
   server: {
     host: '0.0.0.0',
     port: process.env.FRONTEND_PORT ? parseInt(process.env.FRONTEND_PORT, 10) : 19006,

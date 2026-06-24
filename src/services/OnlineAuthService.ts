@@ -1,6 +1,6 @@
 import { apiFetch } from './api';
 
-export class AuthService {
+export class OnlineAuthService {
   public async initCSRF(): Promise<void> {
     try {
       const res = await apiFetch('/api/csrf-init');
@@ -46,5 +46,3 @@ export class AuthService {
     throw new Error('OAuth poll failed.');
   }
 }
-
-export const authService = new AuthService();

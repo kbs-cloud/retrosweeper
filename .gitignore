@@ -33,3 +33,6 @@ test-results/
 # Commit & Changelog drafts
 NEXT_COMMIT.txt
 NEXT_CHANGELOG.md
+
+# Build outputs
+out/

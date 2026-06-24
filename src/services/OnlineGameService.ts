@@ -1,6 +1,6 @@
 import { apiFetch } from './api';
 
-export class GameService {
+export class OnlineGameService {
   private async handleResponse(res: Response, defaultError: string): Promise<any> {
     const contentType = res.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -91,6 +91,3 @@ export class GameService {
     return this.handleResponse(res, 'Failed to update stats.');
   }
 }
-
-export const gameService = new GameService();
-
